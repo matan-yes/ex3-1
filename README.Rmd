@@ -1,0 +1,264 @@
+---
+title: "HW3"
+author: "Yariv Dahan"
+output: github_document
+---
+
+# Ex3
+
+```{r setup, include=FALSE}
+folder = "~/4th year/second semester/Data science/HW3"
+setwd(folder)
+
+#Or for all chuncks in this Rmarkdown:
+knitr::opts_knit$set(root.dir = folder)
+```
+
+## Question 1
+
+first, we will load the data and look at the graph:
+```{r}
+library(igraph)
+ga.data <- read.csv('ga_edgelist.csv', header = T)
+g <- graph.data.frame(ga.data,directed = F)
+plot(g)
+#in order to get the same result at each run, we will set a constant seed.
+set.seed(123)
+```
+
+###a.
+
+Calculate **betweenness** score:
+```{r}
+q1a.betweenness = betweenness(g)
+q1a.betweenness
+```
+The vertex with the highest betweeness score is:
+```{r}
+q1a.max_betweenness <- as.numeric(which(max(q1a.betweenness) == q1a.betweenness))
+q1a.betweenness[q1a.max_betweenness]
+```
+
+
+Calculate **closeness** score:
+```{r}
+q1a.closeness = closeness(g)
+q1a.closeness
+```
+The vertex with the highest closeness score is:
+```{r}
+q1a.max_closeness <- as.numeric(which(max(q1a.closeness) == q1a.closeness))
+q1a.closeness[q1a.max_closeness]
+```
+
+Calculate **eigenvector** score:
+```{r}
+q1a.eigenvector = eigen_centrality(g)
+q1a.eigenvector$vector
+```
+The vertex with the highest betweeness score is:
+```{r}
+q1a.max_eigenvector <- as.numeric(which(max(q1a.eigenvector$vector) == q1a.eigenvector$vector))
+q1a.eigenvector$vector[q1a.max_eigenvector]
+```
+
+###b. community detection:
+
+**First algorithm - Girvan-Newman:**
+```{r}
+q1b.gn <-  edge.betweenness.community(g)
+plot(g, vertex.size=10, vertex.color=membership(q1b.gn), asp=FALSE)
+```
+We can see in this graph we has 7 communities (7 colors). 2 communities are seperated form the others and there are 5 communities that are connected.
+
+the size of the community and number of members:
+```{r}
+sizes(q1b.gn)
+```
+(The first row is community ID, sizes are written in the second row).
+
+modularity value (returns max value):
+```{r}
+modularity(q1b.gn)
+```
+According to Girvan-Newman algorithm, there are 7 communities, the larger has 8 vertexes.
+
+**Second algorithm - walktrap:**
+```{r}
+q1b.walktrap <- walktrap.community(g)
+plot(g, vertex.size=10, vertex.color=membership(q1b.walktrap), asp=FALSE)
+```
+We can see in this graph we has 7 communities (7 colors). 1 community is seperated form the others, 2 communities are connected(Grey family) and the largest connectivity has 4 communities.
+
+The size of the community and number of members:
+```{r}
+sizes(q1b.walktrap)
+```
+we have a total of 7 communities (the first row is community ID, sizes are written in the second row).
+
+modularity value (returns max value):
+```{r}
+modularity(q1b.walktrap)
+```
+According to walktrap algorithm, there are 7 communities, the larger has 13 vertexes.
+
+## Question 2
+
+###a. Data collection
+
+First we will install and load devtools and Rfacebook
+```{r}
+#install.packages("devtools")
+library(devtools)
+#install_github("Rfacebook", "pablobarbera", subdir="Rfacebook")
+require(Rfacebook)
+```
+we used this guide to connect to Facebook's API: http://thinktostart.com/analyzing-facebook-with-r/
+
+load the app authentication file (long-lived OAuth token):
+```{r}
+load("fb_oauth_Yariv")
+```
+Note: due to security reasons, this file wasn't uploaded to the repository.
+
+We will get the latest post (with getPage function) and from that post we will get 50 comments (with getPost function, using the post ID).
+Then, we will take only the messages in order to create a vector:
+```{r}
+q2.fb_page <- getPage(page="Futurama", token=fb_oauth_Yariv, n=1)
+q2.fb_post <- getPost(post=q2.fb_page$id[1], token=fb_oauth_Yariv, n=50)
+q2.fb_comments <- q2.fb_post$comments$message
+head (q2.fb_comments, n=2)
+```
+
+We got our raw data, we will preprocess it:
+```{r}
+Clean_String <- function(string){
+    # Lowercase
+    temp <- tolower(string)
+    #' Remove everything that is not a number or letter 
+    temp <- stringr::str_replace_all(temp,"[^a-zA-Z'0-9\\s]", "")
+    # Shrink down to just one white space
+    temp <- stringr::str_replace_all(temp,"[\\s]+", " ")
+    # Get rid of trailing "" if necessary
+    indexes <- which(temp == "")
+    if(length(indexes) > 0){
+      temp <- temp[-indexes]
+    } 
+    return(temp)
+}
+q2.fb_comments <- sapply(X=q2.fb_comments,FUN=Clean_String)
+head(q2.fb_comments,n = 2)
+```
+We can see the first two comments before and after preprocess.
+
+We got our data.
+
+###b. Creating corpus
+
+Now we are ready to build the corpus. It will contain each comment as a document and each word as a term:
+```{r}
+library(tm)
+q2.corpus <- Corpus(VectorSource(q2.fb_comments))
+```
+
+We want to remove stop words (after several tries, we saw that the graph is too complicated, so we "shaved" it):
+```{r}
+q2.corpus <- tm_map(q2.corpus, removeWords, stopwords("english"))
+```
+
+The term-document matrix will contain a binary weight, meaning '1' if term a is in document 1 or '0' otherwise.
+```{r}
+q2.td_matrix <- TermDocumentMatrix(q2.corpus, control = list(weighting=weightBin))
+q2.td_matrix <- as.matrix(q2.td_matrix)
+q2.td_matrix
+```
+We have now adjacency table.
+
+###c. Craeting graph
+
+Finally, we will build a graph. The graph is a bipartite graph, so we have to build a term-term graph that displays connections between terms that appear together:
+```{r}
+q2.graph <- graph.incidence(q2.td_matrix)
+q2.project_bi_graph <- bipartite.projection(q2.graph)
+q2.graph <- q2.project_bi_graph$proj1
+q2.graph <- simplify(q2.graph)
+summary(q2.graph)
+```
+Our graph has 166 vertexes (which are the terms in all documents), 747 edges (2 terms that appears at least once in the same document) and it is undirected.
+
+Note: before we removed the stop words, vertexes count was 194 and edges count was 1239.
+
+Plot the graph:
+```{r}
+q2.graph$layout <- layout.circle(q2.graph)
+V(q2.graph)$label <- V(q2.graph)$name
+V(q2.graph)$size = degree(q2.graph)
+V(q2.graph)$label.cex<-  2.2 * V(q2.graph)$size / max(V(q2.graph)$size) + .2
+plot(q2.graph,vertex.size=10)
+```
+We chose the circle layout because we thought that it is more convenient.
+
+###d. Calculations (from q1)
+
+Calculate **betweenness** score:
+```{r}
+q2.betweenness = betweenness(q2.graph)
+q2.max_betweenness <- as.numeric(which(max(q2.betweenness) == q2.betweenness))
+q2.betweenness[q2.max_betweenness]
+```
+Calculate **closeness** score:
+```{r}
+q2.closeness = closeness(q2.graph)
+q2.max_closeness <- as.numeric(which(max(q2.closeness) == q2.closeness))
+q2.closeness[q2.max_closeness]
+```
+
+Calculate **eigenvector** score:
+```{r}
+q2.eigenvector = eigen_centrality(q2.graph)
+q2.max_eigenvector <- as.numeric(which(max(q2.eigenvector$vector) == q2.eigenvector$vector))
+q2.eigenvector$vector[q2.max_eigenvector]
+```
+The vertex with the highest score calculating with betweenness and closeness is "game", with eigenvector is "fuera" (there are some vertexes with the same eigenvector score = 1, so the term might change).
+
+####community detection:
+
+We will change our layout in order to see the communities colors (as groups on the graph).  
+```{r}
+q2.graph$layout <-layout.fruchterman.reingold(q2.graph)
+```
+
+**First algorithm - Girvan-Newman:**
+```{r}
+q2.gn <-  edge.betweenness.community(q2.graph)
+plot(q2.graph, vertex.size=10, vertex.color=membership(q2.gn), asp=FALSE)
+```
+the size of the community and number of members:
+```{r}
+sizes(q2.gn)
+```
+(The first row is community ID, sizes are written in the second row).
+
+modularity value (returns max value):
+```{r}
+modularity(q2.gn)
+```
+According to Girvan-Newman algorithm, there are 17 communities, the larger has 49 vertexes.
+
+
+**Second algorithm - walktrap:**
+```{r}
+q2.walktrap <- walktrap.community(q2.graph)
+plot(q2.graph, vertex.size=10, vertex.color=membership(q2.walktrap), asp=FALSE)
+```
+The size of the community and number of members:
+```{r}
+sizes(q2.walktrap)
+```
+(the first row is community ID, sizes are written in the second row).
+
+modularity value (returns max value):
+```{r}
+modularity(q2.walktrap)
+```
+According to walktrap algorithm, there are 16 communities, the larger has 59 vertexes.
