@@ -170,7 +170,7 @@ The term-document matrix will contain a binary weight, meaning '1' if term a is 
 ```{r}
 q2.td_matrix <- TermDocumentMatrix(q2.corpus, control = list(weighting=weightBin))
 q2.td_matrix <- as.matrix(q2.td_matrix)
-q2.td_matrix
+head(q2.td_matrix)
 ```
 We have now adjacency table.
 
