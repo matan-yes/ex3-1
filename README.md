@@ -415,7 +415,7 @@ q2.eigenvector$vector[q2.max_eigenvector]
     ## manera 
     ##      1
 
-The vertex with the highest score calculating with betweenness and closeness is "game", with eigenvector is "fuera" (there are some vertexes with the same eigenvector score = 1, so the term might change).
+The vertex with the highest score calculating with betweenness and closeness is "game", with eigenvector is "manera" (there are some vertexes with the same eigenvector score = 1, so the term might change).
 
 #### community detection:
 
